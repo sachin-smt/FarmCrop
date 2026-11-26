@@ -1,0 +1,1 @@
+-- Placeholder for the future orders table migration; no table is created here.

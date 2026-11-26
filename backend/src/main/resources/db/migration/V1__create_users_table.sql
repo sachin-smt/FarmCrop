@@ -1,0 +1,1 @@
+-- Placeholder for the future users table migration; no table is created here.

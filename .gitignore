@@ -1,0 +1,35 @@
+# Java and Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# Environment files and application secrets
+.env
+.env.*
+application-secrets.properties
+application-*-secrets.properties
+*.secrets.properties
+*.local.properties
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
