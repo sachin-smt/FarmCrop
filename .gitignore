@@ -14,6 +14,7 @@ target/
 # Environment files and application secrets
 .env
 .env.*
+!.env.example
 application-secrets.properties
 application-*-secrets.properties
 *.secrets.properties

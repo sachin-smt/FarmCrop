@@ -1,1 +1,0 @@
--- Placeholder for future chatbot message storage; no table is created here.

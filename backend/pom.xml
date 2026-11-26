@@ -15,7 +15,7 @@
     <artifactId>farmcrop-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>farmcrop-backend</name>
-    <description>FarmCrop modular monolith backend scaffold</description>
+    <description>FarmCrop agricultural marketplace backend (modular monolith)</description>
 
     <properties>
         <java.version>25</java.version>
@@ -68,6 +68,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
