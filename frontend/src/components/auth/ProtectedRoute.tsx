@@ -1,0 +1,3 @@
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
+export function ProtectedRoute() { const { isLoading, isAuthenticated, needsPhoneVerification } = useAuth(); const location = useLocation(); if (isLoading) return <main className="container grid min-h-[50vh] place-items-center text-sm text-[#66736b]">Loading your session...</main>; if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />; if (needsPhoneVerification) return <Navigate to="/verify-phone" replace state={{ from: location.pathname }} />; return <Outlet />; }

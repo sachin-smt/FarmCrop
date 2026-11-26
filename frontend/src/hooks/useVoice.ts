@@ -1,0 +1,7 @@
+import { useCallback, useState } from 'react';
+
+interface SpeechRecognitionEventLike { results: { [index: number]: { [index: number]: { transcript: string } } }; }
+interface RecognitionLike { lang: string; continuous: boolean; interimResults: boolean; onresult: ((event: SpeechRecognitionEventLike) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start: () => void; stop: () => void; }
+
+type SpeechWindow = Window & { SpeechRecognition?: new () => RecognitionLike; webkitSpeechRecognition?: new () => RecognitionLike };
+export function useVoice(locale: string, onTranscript: (text: string) => void) { const [isListening, setIsListening] = useState(false); const [isSupported] = useState(() => typeof window !== 'undefined' && Boolean((window as SpeechWindow).SpeechRecognition || (window as SpeechWindow).webkitSpeechRecognition)); const start = useCallback(() => { const speechWindow = window as SpeechWindow; const Constructor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition; if (!Constructor) return false; const recognition = new Constructor(); recognition.lang = locale; recognition.continuous = false; recognition.interimResults = false; recognition.onresult = (event) => onTranscript(event.results[0][0].transcript); recognition.onend = () => setIsListening(false); recognition.onerror = () => setIsListening(false); recognition.start(); setIsListening(true); return true; }, [locale, onTranscript]); const stop = useCallback(() => setIsListening(false), []); return { isSupported, isListening, start, stop }; }

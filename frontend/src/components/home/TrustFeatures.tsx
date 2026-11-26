@@ -1,0 +1,3 @@
+import { HandCoins, ShieldCheck, Sprout, UsersRound } from 'lucide-react';
+const items = [[HandCoins, 'Direct & fair pricing'], [Sprout, 'Fresh & quality crops'], [ShieldCheck, 'Safe payments'], [UsersRound, 'Trusted community']] as const;
+export function TrustFeatures() { return <div className="container grid grid-cols-2 gap-3 py-7 text-center sm:grid-cols-4">{items.map(([Icon, label]) => <div key={label} className="flex items-center justify-center gap-2 text-xs font-semibold text-[#53635a]"><span className="grid size-8 place-items-center rounded-full bg-[#e8f5ec] text-[#0b6b3a]"><Icon size={16} /></span>{label}</div>)}</div>; }

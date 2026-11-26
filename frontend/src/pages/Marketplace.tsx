@@ -1,0 +1,4 @@
+import { useState } from 'react';
+import type { CartItem, CropCategory } from '../types';
+import { CategoryBar, ProductSection } from '../components/home/HomeSections';
+export function Marketplace({ addToCart }: { cart: CartItem[]; addToCart: (item: CartItem) => void }) { const [category, setCategory] = useState<CropCategory>('All Crops'); return <main className="pb-12 pt-6 sm:pt-10"><div className="container mb-5 sm:mb-8"><p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#0b6b3a] sm:text-xs">Marketplace</p><h1 className="serif mt-1 text-3xl font-bold text-[#064e2a] sm:mt-2 sm:text-5xl">Choose your fresh start.</h1><p className="mt-2 max-w-xl text-sm text-[#66736b] sm:mt-3">Browse demo listings from verified farmers across India. Prices and availability are for demonstration.</p></div><CategoryBar active={category} onChange={setCategory} /><ProductSection category={category} onAdd={addToCart} /></main>; }
