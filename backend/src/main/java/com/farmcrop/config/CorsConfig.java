@@ -18,10 +18,12 @@ import java.util.List;
 @Configuration
 public class CorsConfig {
 
+    // Eclipse JDT null analysis cannot see through unannotated Function<T, R> lambdas (false positive).
+    @SuppressWarnings("null")
     @Bean
     CorsConfigurationSource corsConfigurationSource(@Value("${farmcrop.cors.allowed-origins}") String allowedOrigins) {
         List<String> origins = Arrays.stream(allowedOrigins.split(","))
-                .map(String::trim)
+                .map(origin -> origin.trim())
                 .filter(origin -> !origin.isEmpty())
                 .toList();
         if (origins.contains("*")) {
