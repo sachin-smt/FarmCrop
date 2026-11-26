@@ -35,8 +35,12 @@ public record ApiResponse<T>(
         return new ApiResponse<>(true, data, message, null, null, Instant.now());
     }
 
-    public static ApiResponse<Void> error(String code, String message) {
+    public static <T> ApiResponse<T> error(String code, String message) {
         return new ApiResponse<>(false, null, message, code, null, Instant.now());
+    }
+
+    public static <T> ApiResponse<T> error(String code, String message, List<FieldError> errors) {
+        return new ApiResponse<>(false, null, message, code, errors == null || errors.isEmpty() ? null : errors, Instant.now());
     }
 
     public static ApiResponse<Void> validation(String message, List<FieldError> errors) {

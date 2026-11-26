@@ -46,6 +46,12 @@ class ApiFoundationTest {
     }
 
     @Test
+    void apiDocsAreNotExposedOutsideTheDevProfile() throws Exception {
+        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/swagger-ui.html")).andExpect(status().isNotFound());
+    }
+
+    @Test
     void nonHealthActuatorEndpointsAreNotPublic() throws Exception {
         mockMvc.perform(get("/actuator/env")).andExpect(status().isUnauthorized());
     }
