@@ -36,7 +36,7 @@ public class UserService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Please correct the highlighted fields.",
                     List.of(new FieldError("phone", "Enter a valid phone number (10-15 digits).")));
         }
-        if (phone != null && userRepository.existsByPhoneAndIdNot(phone, userId)) {
+        if (phone != null && userRepository.existsByPhoneInAndIdNot(ValidationPatterns.equivalentPhones(phone), userId)) {
             throw new ApiException(HttpStatus.CONFLICT, "ACCOUNT_EXISTS", "Some details are already registered.",
                     List.of(new FieldError("phone", "An account with this phone number already exists.")));
         }
@@ -49,6 +49,11 @@ public class UserService {
             user.setPreferredLanguage(language);
         }
         user.setFullName(request.fullName().trim());
+        // (List.of(...).contains(null) throws, hence the explicit null check.)
+        if (user.getPhone() == null || !ValidationPatterns.equivalentPhones(phone).contains(user.getPhone())) {
+            // A different number has not been verified by OTP.
+            user.setPhoneVerified(false);
+        }
         user.setPhone(phone);
         return UserProfileResponse.from(userRepository.saveAndFlush(user));
     }

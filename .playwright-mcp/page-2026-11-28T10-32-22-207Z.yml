@@ -1,0 +1,120 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "FarmCrop home" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e11]:
+          - strong [ref=e12]: FarmCrop
+          - generic [ref=e13]: From Farmers to Every Home
+      - navigation "Primary navigation" [ref=e14]:
+        - link "Home" [ref=e15] [cursor=pointer]:
+          - /url: /
+        - link "Buy Crops" [ref=e16] [cursor=pointer]:
+          - /url: /marketplace
+        - link "For Farmers" [ref=e17] [cursor=pointer]:
+          - /url: /farmers
+        - link "About" [ref=e18] [cursor=pointer]:
+          - /url: "#about"
+        - link "Support" [ref=e19] [cursor=pointer]:
+          - /url: "#support"
+      - generic [ref=e20]:
+        - generic [ref=e26]: Language
+        - combobox "Choose language" [ref=e27]:
+          - option "English" [selected]
+          - option "हिन्दी"
+          - option "मराठी"
+          - option "বাংলা"
+          - option "తెలుగు"
+          - option "राजस्थानी"
+          - option "ಕನ್ನಡ"
+          - option "मैथिली"
+          - option "ગુજરાતી"
+          - option "தமிழ்"
+          - option "മലയാളം"
+          - option "ਪੰਜਾਬੀ"
+          - option "অসমীয়া"
+      - button "Shopping cart, 0 items" [ref=e28] [cursor=pointer]
+      - button "Login / Sign Up" [ref=e34] [cursor=pointer]
+  - main [ref=e35]:
+    - generic [ref=e36]:
+      - generic [ref=e37]:
+        - heading "FarmCrop" [level=1] [ref=e41]
+        - paragraph [ref=e42]: Direct from our farmers' fields to your home. Better prices for farmers. Fresher food for everyone.
+        - generic [ref=e43]: Fresh produce, directly from farmers
+      - generic [ref=e47]:
+        - generic [ref=e48]:
+          - link "FarmCrop" [ref=e49] [cursor=pointer]:
+            - /url: /
+          - generic [ref=e53]:
+            - generic [ref=e59]: Language
+            - combobox "Choose language" [ref=e60]:
+              - option "English" [selected]
+              - option "हिन्दी"
+              - option "मराठी"
+              - option "বাংলা"
+              - option "తెలుగు"
+              - option "राजस्थानी"
+              - option "ಕನ್ನಡ"
+              - option "मैथिली"
+              - option "ગુજરાતી"
+              - option "தமிழ்"
+              - option "മലയാളം"
+              - option "ਪੰਜਾਬੀ"
+              - option "অসমীয়া"
+        - generic [ref=e61]:
+          - heading "Welcome to FarmCrop" [level=2] [ref=e62]
+          - paragraph [ref=e63]: Fresh harvest, directly from farmers to you.
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - text: Username or email
+              - textbox "Username or email" [ref=e67]
+            - generic [ref=e68]:
+              - text: Password
+              - generic [ref=e69]:
+                - textbox "Password Show password" [ref=e70]
+                - button "Show password" [ref=e71] [cursor=pointer]
+            - button "Forgot password?" [ref=e76] [cursor=pointer]
+            - button "Log in" [ref=e77] [cursor=pointer]
+          - paragraph [ref=e78]:
+            - text: New to FarmCrop?
+            - link "Create an account" [ref=e79] [cursor=pointer]:
+              - /url: /register
+          - generic [ref=e80]: OR
+          - group "Social sign-in options" [ref=e83]:
+            - button "Continue with Google" [ref=e84] [cursor=pointer]:
+              - generic [ref=e85]: G
+            - button "Continue with Facebook" [ref=e86] [cursor=pointer]:
+              - generic [ref=e87]: f
+            - button "Continue with X" [ref=e88] [cursor=pointer]:
+              - generic [ref=e89]: X
+            - button "Continue with Apple ID" [ref=e90] [cursor=pointer]
+          - paragraph [ref=e94]: Social sign-in is not available yet. Please use your username or email.
+          - generic [ref=e95]: OR
+          - generic [ref=e98]:
+            - text: Mobile number
+            - generic [ref=e99]:
+              - generic "Country code India +91" [ref=e102]: "+91"
+              - textbox "Mobile number" [ref=e103]:
+                - /placeholder: 10-digit mobile number
+            - paragraph [ref=e104]: Only Indian mobile numbers (+91) are supported.
+            - button "Send OTP" [disabled] [ref=e105] [cursor=pointer]
+          - paragraph [ref=e106]: Mobile OTP sign-in is not available yet. Please use your username or email.
+  - contentinfo [ref=e107]:
+    - generic [ref=e108]:
+      - generic [ref=e109]:
+        - generic [ref=e110]:
+          - generic [ref=e111]: ✦
+          - text: FarmCrop
+        - paragraph [ref=e112]: Connecting farmers directly with homes across India.
+      - generic [ref=e113]:
+        - heading "Buy Crops" [level=3] [ref=e114]
+        - paragraph [ref=e115]: Browse CropsVegetablesGrainsOrganic
+      - generic [ref=e116]:
+        - heading "For Farmers" [level=3] [ref=e117]
+        - paragraph [ref=e118]: Start SellingPaymentsSupport
+      - generic [ref=e119]:
+        - heading "About" [level=3] [ref=e120]
+        - paragraph [ref=e121]: AboutContactPrivacy
+    - generic [ref=e122]:
+      - generic [ref=e123]: © 2026 FarmCrop
+      - generic [ref=e124]: Made for farmers and communities.

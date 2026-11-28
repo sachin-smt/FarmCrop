@@ -1,5 +1,6 @@
 package com.farmcrop.auth;
 
+import com.farmcrop.support.CapturingEmailSender;
 import com.jayway.jsonpath.JsonPath;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -42,17 +43,39 @@ public final class AuthTestSupport {
                 """.formatted(username, email, phone, password, confirm);
     }
 
+    public static String verifyJson(String email, String otp, String password) {
+        return "{\"email\":\"%s\",\"otp\":\"%s\",\"password\":\"%s\"}".formatted(email, otp, password);
+    }
+
+    /** Starts an email registration (step 1) from a unique IP; returns the raw result (202 on success). */
+    public static MvcResult startRegistration(MockMvc mockMvc, String username, String email, String phone) throws Exception {
+        return mockMvc.perform(withUniqueIp(post("/api/v1/auth/register"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerJson(username, email, phone, PASSWORD, PASSWORD)))
+                .andReturn();
+    }
+
+    /** Submits the email code (step 2) from a unique IP. */
+    public static MvcResult verifyRegistration(MockMvc mockMvc, String email, String otp, String password) throws Exception {
+        return mockMvc.perform(withUniqueIp(post("/api/v1/auth/register/verify"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(verifyJson(email, otp, password)))
+                .andReturn();
+    }
+
+    /** A fully registered, email-verified, signed-in BUYER (register -> read the emailed code -> verify). */
     public static Account register(MockMvc mockMvc) throws Exception {
         int n = next();
         String username = "user" + n;
         String email = "user" + n + "@example.test";
         String phone = "9" + String.format("%09d", n);
-        MvcResult result = mockMvc.perform(post("/api/v1/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(registerJson(username, email, phone, PASSWORD, PASSWORD)))
-                .andReturn();
+        MvcResult started = startRegistration(mockMvc, username, email, phone);
+        if (started.getResponse().getStatus() != 202) {
+            throw new IllegalStateException("Registration failed: " + started.getResponse().getContentAsString());
+        }
+        MvcResult result = verifyRegistration(mockMvc, email, CapturingEmailSender.lastCodeFor(email), PASSWORD);
         if (result.getResponse().getStatus() != 201) {
-            throw new IllegalStateException("Registration failed: " + result.getResponse().getContentAsString());
+            throw new IllegalStateException("Verification failed: " + result.getResponse().getContentAsString());
         }
         return new Account(username, email, phone, accessToken(result), refreshCookie(result));
     }

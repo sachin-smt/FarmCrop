@@ -19,7 +19,6 @@
     ],
     "deny": [
       "Read(./.env)",
-      "Read(./backend/.env)",
       "Read(./frontend/.env)",
       "Read(./frontend/.env.local)",
       "Read(./frontend/.env.development.local)",

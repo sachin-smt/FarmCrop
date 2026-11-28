@@ -60,6 +60,8 @@ export interface RequestOptions {
   query?: Record<string, QueryValue>;
   /** Attach the in-memory access token (default true). */
   auth?: boolean;
+  /** Extra request headers (e.g. the anti-CSRF header required by cookie-authenticated endpoints). */
+  headers?: Record<string, string>;
   signal?: AbortSignal;
   timeoutMs?: number;
 }
@@ -106,7 +108,7 @@ async function readEnvelope<T>(response: Response): Promise<ApiEnvelope<T> | nul
 
 async function send(path: string, options: RequestOptions): Promise<Response> {
   const { method = 'GET', body, query, auth = true, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
-  const headers = new Headers({ Accept: 'application/json' });
+  const headers = new Headers({ ...options.headers, Accept: 'application/json' });
   let payload: BodyInit | undefined;
 
   if (body instanceof FormData) {

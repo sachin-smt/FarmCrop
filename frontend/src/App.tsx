@@ -4,10 +4,13 @@ import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { CartDrawer } from './components/cart/CartDrawer';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { RoleRoute } from './components/auth/RoleRoute';
+import { SellerAccessGuard } from './components/seller/SellerAccessGuard';
 import { Home } from './pages/Home';
 import { Marketplace } from './pages/Marketplace';
 import { Farmers } from './pages/Farmers';
 import { Login } from './pages/Login';
+import { Register } from './pages/Register';
 import { VerifyPhone } from './pages/VerifyPhone';
 import { Profile } from './pages/Profile';
 import { PortalShell } from './features/portals/components/PortalShell';
@@ -59,16 +62,18 @@ export default function App() {
     });
   }
 
-  return <div className="min-h-screen overflow-x-hidden">
+  return <div className="min-h-screen overflow-x-clip">
     {!isPortalPath && <Navbar cartCount={cartCount} onCartClick={() => setCartOpen(true)} />}
     <Routes>
       <Route path="/" element={<Home cart={cart} addToCart={addToCart} />} />
       <Route path="/marketplace" element={<Marketplace cart={cart} addToCart={addToCart} />} />
       <Route path="/farmers" element={<Farmers />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/verify-phone" element={<VerifyPhone />} />
       <Route element={<ProtectedRoute />}><Route path="/profile" element={<Profile />} /></Route>
 
+      <Route element={<RoleRoute role="admin" />}>
       <Route path="/admin" element={<PortalShell role="admin" />}>
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboard />} />
@@ -84,10 +89,14 @@ export default function App() {
         <Route path="notifications" element={<AdminNotifications />} />
         <Route path="settings" element={<AdminSettings />} />
       </Route>
+      </Route>
 
-      <Route path="/seller/application" element={<SellerApplication />} />
-      <Route path="/seller/apply" element={<SellerApplication />} />
-      <Route path="/seller/application-status" element={<SellerApplicationStatus />} />
+      <Route element={<ProtectedRoute />}>
+        <Route path="/seller/application" element={<SellerApplication />} />
+        <Route path="/seller/apply" element={<SellerApplication />} />
+        <Route path="/seller/application-status" element={<SellerApplicationStatus />} />
+      </Route>
+      <Route element={<SellerAccessGuard />}>
       <Route path="/seller" element={<PortalShell role="seller" />}>
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<SellerDashboard />} />
@@ -101,6 +110,7 @@ export default function App() {
         <Route path="notifications" element={<SellerNotifications />} />
         <Route path="profile" element={<SellerProfile />} />
         <Route path="settings" element={<SellerProfile />} />
+      </Route>
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

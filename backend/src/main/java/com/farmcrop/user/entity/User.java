@@ -36,7 +36,8 @@ public class User {
     @Column(name = "username", nullable = false, unique = true, length = 40)
     private String username;
 
-    @Column(name = "email", nullable = false, unique = true, length = 254)
+    /** Null for accounts created by phone OTP sign-in (V14). */
+    @Column(name = "email", unique = true, length = 254)
     private String email;
 
     @Column(name = "phone", unique = true, length = 20)
@@ -44,6 +45,12 @@ public class User {
 
     @Column(name = "password_hash", nullable = false, length = 100)
     private String passwordHash;
+
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified;
+
+    @Column(name = "phone_verified", nullable = false)
+    private boolean phoneVerified;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "account_status", nullable = false, length = 20)
@@ -134,6 +141,22 @@ public class User {
 
     public void setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public void setEmailVerified(boolean emailVerified) {
+        this.emailVerified = emailVerified;
+    }
+
+    public boolean isPhoneVerified() {
+        return phoneVerified;
+    }
+
+    public void setPhoneVerified(boolean phoneVerified) {
+        this.phoneVerified = phoneVerified;
     }
 
     public AccountStatus getAccountStatus() {

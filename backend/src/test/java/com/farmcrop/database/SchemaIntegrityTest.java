@@ -37,7 +37,13 @@ class SchemaIntegrityTest {
             "carts", "cart_items", "orders", "seller_orders", "order_items", "order_status_history", "inventory_reservations",
             // V9 payments, V10 notifications, V11 chat, V12 audit
             "payments", "payment_events", "refunds", "notifications", "notification_preferences",
-            "chat_conversations", "chat_messages", "audit_logs");
+            "chat_conversations", "chat_messages", "audit_logs",
+            // V14 Google / phone sign-in
+            "user_auth_identities", "consumed_identity_tokens",
+            // V15 email registration OTP
+            "pending_registrations",
+            // V16 shared rate limiting
+            "rate_limit_keys", "rate_limit_hits");
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -79,7 +85,8 @@ class SchemaIntegrityTest {
                 // version IS NULL rows are Flyway's own schema-creation markers, not migrations.
                 "SELECT \"version\" FROM \"flyway_schema_history\" WHERE \"success\" = TRUE AND \"version\" IS NOT NULL ORDER BY \"installed_rank\"",
                 String.class);
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+        assertThat(versions)
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM \"flyway_schema_history\" WHERE \"success\" = FALSE", Integer.class)).isZero();
     }
 
@@ -187,20 +194,90 @@ class SchemaIntegrityTest {
     @Test
     void orderItemsRejectZeroQuantityAndDeletingAPurchasedProductIsBlocked() {
         long orderId = insertOrder("FC-ORD-T4", "key-4", 50, 0, 0, 50);
-        jdbc.update("""
-                INSERT INTO seller_orders (order_id, seller_id, seller_order_number, status, subtotal, shipping_amount, total, created_at, updated_at)
-                VALUES (?, ?, 'FC-ORD-T4-S1', 'PENDING', 50, 0, 50, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))""", orderId, sellerId);
-        long sellerOrderId = jdbc.queryForObject("SELECT id FROM seller_orders WHERE seller_order_number = 'FC-ORD-T4-S1'", Long.class);
-        String item = "INSERT INTO order_items (order_id, seller_order_id, product_id, product_name_snapshot, unit_snapshot, unit_price, quantity, line_total, created_at) "
-                + "VALUES (?, ?, ?, 'Schema Potato', 'KG', 25.00, ?, ?, CURRENT_TIMESTAMP(6))";
-        assertThatThrownBy(() -> jdbc.update(item, orderId, sellerOrderId, productId, 0, 0)).isInstanceOf(DataIntegrityViolationException.class);
-        jdbc.update(item, orderId, sellerOrderId, productId, 2, 50);
+        long sellerOrderId = insertSellerOrder(orderId, sellerId, "FC-ORD-T4-S1", 50);
+        assertThatThrownBy(() -> insertOrderItem(orderId, sellerOrderId, productId, sellerId, 0))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        insertOrderItem(orderId, sellerOrderId, productId, sellerId, 2);
 
         jdbc.update("DELETE FROM inventory WHERE product_id = ?", productId);
         assertThatThrownBy(() -> jdbc.update("DELETE FROM products WHERE id = ?", productId))
                 .as("order history protects the product row").isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> jdbc.update("DELETE FROM users WHERE id = ?", buyerId))
                 .as("order history protects the buyer row").isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void orderItemsMustMatchTheirParentOrderAndProductSeller() {
+        long otherSellerUserId = insertUser("schema_other_seller");
+        long otherSellerId = insertSellerProfile(otherSellerUserId, "Other Schema Farm");
+        long otherProductId = insertProduct(otherSellerId, "Other Schema Potato");
+
+        long orderId = insertOrder("FC-ORD-V13-A", "key-v13-a", 25, 0, 0, 25);
+        long otherOrderId = insertOrder("FC-ORD-V13-B", "key-v13-b", 25, 0, 0, 25);
+        long sellerOrderId = insertSellerOrder(orderId, sellerId, "FC-ORD-V13-A-S1", 25);
+        long otherSellerOrderId = insertSellerOrder(otherOrderId, otherSellerId, "FC-ORD-V13-B-S1", 25);
+
+        assertThatThrownBy(() -> insertOrderItem(orderId, otherSellerOrderId, productId, sellerId, 1))
+                .as("a seller order must belong to the same parent order")
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertOrderItem(orderId, sellerOrderId, otherProductId, otherSellerId, 1))
+                .as("the purchased product and seller order must have the same seller")
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void paymentsMustMatchOrderBuyerAndAttemptNumbersMustBeUnique() {
+        long otherBuyerId = insertUser("schema_other_buyer");
+        long orderId = insertOrder("FC-ORD-V13-P", "key-v13-p", 25, 0, 0, 25);
+        String insertPayment = """
+                INSERT INTO payments (order_id, buyer_id, gateway_order_id, amount, status, attempt_number, created_at, updated_at)
+                VALUES (?, ?, ?, 25, 'CREATED', ?, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))""";
+
+        assertThatThrownBy(() -> jdbc.update(insertPayment, orderId, otherBuyerId, "gw-v13-mismatch", 1))
+                .as("payment buyer must match its parent order")
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        jdbc.update(insertPayment, orderId, buyerId, "gw-v13-attempt-1", 1);
+        assertThatThrownBy(() -> jdbc.update(insertPayment, orderId, buyerId, "gw-v13-attempt-1b", 1))
+                .as("payment attempt number must be unique within an order")
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void refundsMustMatchTheirPaymentAndSellerOrderParents() {
+        long orderId = insertOrder("FC-ORD-V13-R1", "key-v13-r1", 25, 0, 0, 25);
+        long otherOrderId = insertOrder("FC-ORD-V13-R2", "key-v13-r2", 25, 0, 0, 25);
+        jdbc.update("""
+                INSERT INTO payments (order_id, buyer_id, gateway_order_id, amount, status, created_at, updated_at)
+                VALUES (?, ?, 'gw-v13-refund', 25, 'SUCCESS', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))""",
+                orderId, buyerId);
+        long paymentId = jdbc.queryForObject("SELECT id FROM payments WHERE gateway_order_id = 'gw-v13-refund'", Long.class);
+        long otherSellerOrderId = insertSellerOrder(otherOrderId, sellerId, "FC-ORD-V13-R2-S1", 25);
+        String insertRefund = """
+                INSERT INTO refunds (payment_id, order_id, seller_order_id, amount, status, created_at, updated_at)
+                VALUES (?, ?, ?, 10, 'PENDING', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))""";
+
+        assertThatThrownBy(() -> jdbc.update(insertRefund, paymentId, otherOrderId, null))
+                .as("refund order must match its payment order")
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update(insertRefund, paymentId, orderId, otherSellerOrderId))
+                .as("refund seller order must belong to the refund parent order")
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void inventoryReservationProductMustMatchItsOrderItem() {
+        long orderId = insertOrder("FC-ORD-V13-I", "key-v13-i", 25, 0, 0, 25);
+        long sellerOrderId = insertSellerOrder(orderId, sellerId, "FC-ORD-V13-I-S1", 25);
+        long orderItemId = insertOrderItem(orderId, sellerOrderId, productId, sellerId, 1);
+        long otherProductId = insertProduct(sellerId, "Second Schema Potato");
+
+        assertThatThrownBy(() -> jdbc.update("""
+                INSERT INTO inventory_reservations (order_item_id, product_id, quantity, status, expires_at, created_at)
+                VALUES (?, ?, 1, 'ACTIVE', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))""",
+                orderItemId, otherProductId))
+                .as("reservation product must match its order item product")
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     // ---------- payments ----------
@@ -233,6 +310,33 @@ class SchemaIntegrityTest {
         assertThatThrownBy(() -> jdbc.update(insert, buyerId, "ADMIN")).isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    // ---------- V14: Google / phone sign-in ----------
+
+    @Test
+    void phoneOnlyAccountsMayOmitEmailButEmailsStayUnique() {
+        String insert = "INSERT INTO users (full_name, username, email, phone, password_hash, account_status, created_at, updated_at) "
+                + "VALUES ('Phone User', ?, ?, ?, '{bcrypt}x', 'ACTIVE', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))";
+        jdbc.update(insert, "schema_phone_a", null, "+917000000001");
+        jdbc.update(insert, "schema_phone_b", null, "+917000000002");
+        assertThatThrownBy(() -> jdbc.update(insert, "schema_phone_c", "schema_buyer@example.test", "+917000000003"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void anExternalIdentityBelongsToOneUserAndAUserHasOneLinkPerProvider() {
+        String insert = "INSERT INTO user_auth_identities (user_id, provider, provider_subject, created_at) VALUES (?, 'GOOGLE', ?, CURRENT_TIMESTAMP(6))";
+        jdbc.update(insert, buyerId, "google-sub-1");
+        assertThatThrownBy(() -> jdbc.update(insert, sellerUserId, "google-sub-1")).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update(insert, buyerId, "google-sub-2")).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void aSignInTokenCanBeConsumedOnlyOnce() {
+        String insert = "INSERT INTO consumed_identity_tokens (token_hash, expires_at, created_at) VALUES (?, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))";
+        jdbc.update(insert, "a".repeat(64));
+        assertThatThrownBy(() -> jdbc.update(insert, "a".repeat(64))).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     private long insertUser(String username) {
         jdbc.update("""
                 INSERT INTO users (full_name, username, email, password_hash, account_status, created_at, updated_at)
@@ -250,5 +354,38 @@ class SchemaIntegrityTest {
                         CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))""",
                 number, buyerId, subtotal, shipping, discount, grandTotal, idempotencyKey);
         return jdbc.queryForObject("SELECT id FROM orders WHERE order_number = ?", Long.class, number);
+    }
+
+    private long insertSellerProfile(long userId, String farmName) {
+        jdbc.update("""
+                INSERT INTO seller_profiles (user_id, farm_name, seller_status, approved_at, created_at, updated_at)
+                VALUES (?, ?, 'ACTIVE', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))""",
+                userId, farmName);
+        return jdbc.queryForObject("SELECT id FROM seller_profiles WHERE user_id = ?", Long.class, userId);
+    }
+
+    private long insertProduct(long sellerId, String name) {
+        long categoryId = jdbc.queryForObject("SELECT id FROM categories WHERE slug = 'vegetables'", Long.class);
+        jdbc.update("""
+                INSERT INTO products (seller_id, category_id, name, unit, price, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'KG', 25, 'ACTIVE', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))""",
+                sellerId, categoryId, name);
+        return jdbc.queryForObject("SELECT id FROM products WHERE name = ?", Long.class, name);
+    }
+
+    private long insertSellerOrder(long orderId, long sellerId, String number, int subtotal) {
+        jdbc.update("""
+                INSERT INTO seller_orders (order_id, seller_id, seller_order_number, status, subtotal, shipping_amount, total, created_at, updated_at)
+                VALUES (?, ?, ?, 'PENDING', ?, 0, ?, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))""",
+                orderId, sellerId, number, subtotal, subtotal);
+        return jdbc.queryForObject("SELECT id FROM seller_orders WHERE seller_order_number = ?", Long.class, number);
+    }
+
+    private long insertOrderItem(long orderId, long sellerOrderId, long productId, long sellerId, int quantity) {
+        jdbc.update("""
+                INSERT INTO order_items (order_id, seller_order_id, product_id, seller_id, product_name_snapshot, unit_snapshot, unit_price, quantity, line_total, created_at)
+                VALUES (?, ?, ?, ?, 'Schema Potato', 'KG', 25, ?, ?, CURRENT_TIMESTAMP(6))""",
+                orderId, sellerOrderId, productId, sellerId, quantity, quantity * 25);
+        return jdbc.queryForObject("SELECT id FROM order_items WHERE order_id = ? AND product_id = ?", Long.class, orderId, productId);
     }
 }

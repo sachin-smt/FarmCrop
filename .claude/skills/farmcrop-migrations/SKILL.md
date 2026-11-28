@@ -21,6 +21,7 @@ H2 (`MODE=MySQL;DATABASE_TO_LOWER=TRUE`), so every script must work on **both** 
 - One `INSERT` per row for seed data. No `ENGINE=`, `CHARSET=`, `COMMENT=`, `ON UPDATE CURRENT_TIMESTAMP`, `ENUM(...)`, triggers or stored procedures.
 - Money: `DECIMAL(12,2)`; quantities: `DECIMAL(12,3)`; never `FLOAT`/`DOUBLE`.
 - Timestamps: `DATETIME(6)` in UTC (`hibernate.jdbc.time_zone=UTC`); set them from the application/auditing.
+- Strings are always `VARCHAR(n)`, never `CHAR(n)` (Hibernate validation expects VARCHAR for String fields).
 - Status columns: `VARCHAR(30)` + Java enum with `@Enumerated(EnumType.STRING)`.
 - Booleans: `BOOLEAN NOT NULL DEFAULT FALSE`.
 - Add an index for every foreign key and every column used in list filters/sorting.

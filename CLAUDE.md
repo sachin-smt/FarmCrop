@@ -14,7 +14,7 @@ and moderate the marketplace. Roadmap and open business decisions: `docs/impleme
 | Task | Command (from the folder shown) |
 |---|---|
 | Backend tests + build | `backend/`: `./mvnw -B verify` |
-| Backend run (dev, MySQL) | `backend/`: `./mvnw spring-boot:run` (reads git-ignored `backend/.env`) |
+| Backend run (dev, MySQL) | `backend/`: `./mvnw spring-boot:run` (activates `dev`, reads git-ignored `backend/.env`). IntelliJ: set *Active profiles* = `dev`. There is deliberately no default profile. |
 | Dependency CVE scan | `backend/`: `./mvnw -Psecurity-scan verify -DskipTests` |
 | Frontend unit tests | `frontend/`: `npm test` |
 | Frontend type check + build | `frontend/`: `npm run build` |

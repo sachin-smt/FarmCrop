@@ -2,17 +2,13 @@ package com.farmcrop.auth.service;
 
 import com.farmcrop.auth.dto.AuthResponse;
 import com.farmcrop.auth.dto.LoginRequest;
-import com.farmcrop.auth.dto.RegisterRequest;
 import com.farmcrop.auth.entity.RefreshToken.RevokeReason;
-import com.farmcrop.common.enums.UserRole;
+import com.farmcrop.auth.entity.PendingRegistration;
+import com.farmcrop.auth.repository.PendingRegistrationRepository;
 import com.farmcrop.common.exception.ApiException;
-import com.farmcrop.common.response.ApiResponse.FieldError;
-import com.farmcrop.common.validation.ValidationPatterns;
 import com.farmcrop.security.JwtService;
 import com.farmcrop.user.dto.UserProfileResponse;
-import com.farmcrop.user.entity.Role;
 import com.farmcrop.user.entity.User;
-import com.farmcrop.user.repository.RoleRepository;
 import com.farmcrop.user.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -24,8 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 @Service
@@ -36,61 +30,30 @@ public class AuthService {
     }
 
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
+    private final PendingRegistrationRepository pendingRegistrationRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
     private final LoginAttemptService loginAttemptService;
     private final Clock clock;
+    /** Hash of a random secret, compared against when there is no pending sign-up (constant work per failure). */
+    private final String dummyPasswordHash;
 
-    public AuthService(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder,
+    public AuthService(UserRepository userRepository, PendingRegistrationRepository pendingRegistrationRepository, PasswordEncoder passwordEncoder,
                        AuthenticationManager authenticationManager, JwtService jwtService,
                        RefreshTokenService refreshTokenService, LoginAttemptService loginAttemptService, Clock clock) {
         this.userRepository = userRepository;
-        this.roleRepository = roleRepository;
+        this.pendingRegistrationRepository = pendingRegistrationRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.refreshTokenService = refreshTokenService;
         this.loginAttemptService = loginAttemptService;
         this.clock = clock;
-    }
-
-    @Transactional
-    public AuthResult register(RegisterRequest request) {
-        String username = request.username().trim().toLowerCase(Locale.ROOT);
-        String email = request.email().trim().toLowerCase(Locale.ROOT);
-        String phone = ValidationPatterns.normalizePhone(request.phone());
-
-        List<FieldError> errors = new ArrayList<>();
-        if (!username.matches(ValidationPatterns.USERNAME)) {
-            errors.add(new FieldError("username", "Use 3-30 lower-case letters, numbers, dots or underscores."));
-        } else if (ValidationPatterns.RESERVED_USERNAMES.contains(username)) {
-            errors.add(new FieldError("username", "This username is not available."));
-        }
-        if (phone == null || !phone.matches(ValidationPatterns.PHONE)) {
-            errors.add(new FieldError("phone", "Enter a valid phone number (10-15 digits)."));
-        }
-        if (!request.password().equals(request.confirmPassword())) {
-            errors.add(new FieldError("confirmPassword", "Passwords do not match."));
-        }
-        if (!errors.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Please correct the highlighted fields.", errors);
-        }
-
-        if (userRepository.existsByUsername(username)) errors.add(new FieldError("username", "This username is already taken."));
-        if (userRepository.existsByEmail(email)) errors.add(new FieldError("email", "An account with this email already exists."));
-        if (userRepository.existsByPhone(phone)) errors.add(new FieldError("phone", "An account with this phone number already exists."));
-        if (!errors.isEmpty()) {
-            throw new ApiException(HttpStatus.CONFLICT, "ACCOUNT_EXISTS", "Some details are already registered.", errors);
-        }
-
-        User user = new User(request.fullName().trim(), username, email, phone, passwordEncoder.encode(request.password()));
-        user.grantRole(requireRole(UserRole.BUYER));
-        user.setLastLoginAt(clock.instant());
-        userRepository.saveAndFlush(user);
-        return issueTokens(user);
+        byte[] random = new byte[32];
+        new java.security.SecureRandom().nextBytes(random);
+        this.dummyPasswordHash = passwordEncoder.encode(java.util.Base64.getEncoder().encodeToString(random));
     }
 
     @Transactional
@@ -104,6 +67,13 @@ public class AuthService {
                     UsernamePasswordAuthenticationToken.unauthenticated(identifier, request.password()));
         } catch (AuthenticationException ex) {
             loginAttemptService.recordFailure(identifier, clientIp);
+            // A sign-up that never verified its email is not an account. Say so, but only to someone who knows
+            // the password chosen for it (everyone else gets the generic error).
+            if (hasUnverifiedRegistration(identifier, request.password())) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "EMAIL_NOT_VERIFIED",
+                        "Please verify your email address with the code we sent before logging in. "
+                                + "To get a new code, submit the registration form again.");
+            }
             throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid username/email or password.");
         }
 
@@ -137,7 +107,26 @@ public class AuthService {
         refreshTokenService.revokeFamilyOf(rawRefreshToken);
     }
 
-    private AuthResult issueTokens(User user) {
+    /**
+     * After a failed password check: is this a sign-up whose email was never verified? Only when no account exists
+     * for the identifier (an account created meanwhile, e.g. by Google, must get the normal error), and only the
+     * newest pending sign-up is considered. Exactly one hash comparison runs in every case (a dummy hash when there
+     * is no candidate), so response time does not reveal whether a pending sign-up exists.
+     */
+    private boolean hasUnverifiedRegistration(String identifier, String password) {
+        PendingRegistration candidate = null;
+        if (userRepository.findForLogin(identifier).isEmpty()) {
+            candidate = (identifier.contains("@")
+                    ? pendingRegistrationRepository.findOpenByEmail(identifier)
+                    : pendingRegistrationRepository.findFirstByUsernameAndConsumedAtIsNullOrderByUpdatedAtDesc(identifier))
+                    .orElse(null);
+        }
+        boolean matches = passwordEncoder.matches(password, candidate != null ? candidate.getPasswordHash() : dummyPasswordHash);
+        return candidate != null && matches;
+    }
+
+    /** Starts a new session (access token + refresh-token family). Shared with {@link FirebaseLoginService}. */
+    AuthResult issueTokens(User user) {
         JwtService.IssuedToken access = jwtService.issueAccessToken(user);
         String refresh = refreshTokenService.issueNewFamily(user.getId());
         return new AuthResult(toResponse(access, user), refresh);
@@ -145,10 +134,5 @@ public class AuthService {
 
     private static AuthResponse toResponse(JwtService.IssuedToken access, User user) {
         return new AuthResponse(access.value(), "Bearer", access.expiresAt(), UserProfileResponse.from(user));
-    }
-
-    private Role requireRole(UserRole role) {
-        return roleRepository.findByRoleName(role)
-                .orElseThrow(() -> new IllegalStateException("Role " + role + " is missing; check Flyway migration V1."));
     }
 }

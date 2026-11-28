@@ -1,9 +1,15 @@
 package com.farmcrop.auth.controller;
 
 import com.farmcrop.auth.dto.AuthResponse;
+import com.farmcrop.auth.dto.FirebaseSignInRequest;
 import com.farmcrop.auth.dto.LoginRequest;
+import com.farmcrop.auth.dto.PendingRegistrationResponse;
 import com.farmcrop.auth.dto.RegisterRequest;
+import com.farmcrop.auth.dto.ResendRegistrationOtpRequest;
+import com.farmcrop.auth.dto.VerifyRegistrationRequest;
 import com.farmcrop.auth.service.AuthService;
+import com.farmcrop.auth.service.FirebaseLoginService;
+import com.farmcrop.auth.service.RegistrationService;
 import com.farmcrop.auth.service.RefreshTokenService;
 import com.farmcrop.common.exception.ApiException;
 import com.farmcrop.common.response.ApiResponse;
@@ -35,24 +41,64 @@ public class AuthController {
 
     private final AuthService authService;
     private final RefreshTokenService refreshTokenService;
+    private final FirebaseLoginService firebaseLoginService;
+    private final RegistrationService registrationService;
     private final SecurityProperties properties;
 
-    public AuthController(AuthService authService, RefreshTokenService refreshTokenService, SecurityProperties properties) {
+    public AuthController(AuthService authService, RefreshTokenService refreshTokenService,
+                          FirebaseLoginService firebaseLoginService, RegistrationService registrationService,
+                          SecurityProperties properties) {
         this.authService = authService;
         this.refreshTokenService = refreshTokenService;
+        this.firebaseLoginService = firebaseLoginService;
+        this.registrationService = registrationService;
         this.properties = properties;
     }
 
+    /** Step 1 of email registration: emails a six-digit code. No account or session exists until it is verified. */
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
-        AuthService.AuthResult result = authService.register(request);
-        return withRefreshCookie(HttpStatus.CREATED, result, "Your FarmCrop account has been created.");
+    public ResponseEntity<ApiResponse<PendingRegistrationResponse>> register(@Valid @RequestBody RegisterRequest request,
+                                                                             HttpServletRequest http) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(ApiResponse.ok(registrationService.register(request, http.getRemoteAddr()),
+                        "We sent a 6-digit code to your email. Enter it to finish creating your account."));
+    }
+
+    /** Step 2: email + code + the chosen password. Creates the account and starts the normal FarmCrop session. */
+    @PostMapping("/register/verify")
+    public ResponseEntity<ApiResponse<AuthResponse>> verifyRegistration(@Valid @RequestBody VerifyRegistrationRequest request,
+                                                                        HttpServletRequest http) {
+        return withRefreshCookie(HttpStatus.CREATED, registrationService.verify(request, http.getRemoteAddr()),
+                "Your FarmCrop account has been created.");
+    }
+
+    /** Sends a new code (the previous one stops working), subject to cooldown and hourly limits. */
+    @PostMapping("/register/resend")
+    public ResponseEntity<ApiResponse<PendingRegistrationResponse>> resendRegistrationCode(
+            @Valid @RequestBody ResendRegistrationOtpRequest request, HttpServletRequest http) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(ApiResponse.ok(registrationService.resend(request.email(), http.getRemoteAddr()),
+                        "We sent a new code to your email."));
     }
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
         AuthService.AuthResult result = authService.login(request, http.getRemoteAddr());
         return withRefreshCookie(HttpStatus.OK, result, null);
+    }
+
+    /** Google sign-in / sign-up via a Firebase ID token (verified server-side). */
+    @PostMapping("/google")
+    public ResponseEntity<ApiResponse<AuthResponse>> google(@Valid @RequestBody FirebaseSignInRequest request, HttpServletRequest http) {
+        return withRefreshCookie(HttpStatus.OK, firebaseLoginService.signInWithGoogle(request.idToken(), http.getRemoteAddr()), null);
+    }
+
+    /** Mobile OTP sign-in / sign-up via a Firebase phone-auth ID token (verified server-side). */
+    @PostMapping("/phone")
+    public ResponseEntity<ApiResponse<AuthResponse>> phone(@Valid @RequestBody FirebaseSignInRequest request, HttpServletRequest http) {
+        return withRefreshCookie(HttpStatus.OK, firebaseLoginService.signInWithPhone(request.idToken(), http.getRemoteAddr()), null);
     }
 
     @PostMapping("/refresh")

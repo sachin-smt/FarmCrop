@@ -36,4 +36,9 @@ public record RegisterRequest(
         @NotBlank(message = "Please confirm your password.")
         String confirmPassword
 ) {
+
+    @Override
+    public String toString() {
+        return "RegisterRequest[username=" + username + ", email=" + email + ", password=***, confirmPassword=***]";
+    }
 }

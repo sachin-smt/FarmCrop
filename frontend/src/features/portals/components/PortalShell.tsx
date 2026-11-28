@@ -7,6 +7,7 @@ import {
   ChartNoAxesCombined,
   ClipboardCheck,
   LayoutDashboard,
+  LogOut,
   Menu,
   Package,
   Plus,
@@ -19,7 +20,8 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../hooks/useAuth';
 import { usePortal } from '../PortalContext';
 import type { PortalRole } from '../types';
 
@@ -60,6 +62,8 @@ const sellerNavigation: NavigationItem[] = [
 export function PortalShell({ role }: { role: PortalRole }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { applications } = usePortal();
+  const { profile, logout } = useAuth();
+  const navigate = useNavigate();
   const isAdmin = role === 'admin';
   const navigation = isAdmin ? adminNavigation : sellerNavigation;
   const pendingCount = applications.filter((application) => ['PENDING', 'RESUBMISSION_REQUIRED'].includes(application.status)).length;
@@ -104,6 +108,9 @@ export function PortalShell({ role }: { role: PortalRole }) {
       <Link to="/" className="mt-3 flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-semibold text-[#66736b] hover:bg-[#f5f8f4]">
         <ArrowLeft size={16} /> Back to marketplace
       </Link>
+      <button type="button" onClick={() => { void logout().then(() => navigate('/login', { replace: true })); }} className="flex min-h-11 items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-[#a94837] hover:bg-[#fff1ed]">
+        <LogOut size={16} /> <span className="min-w-0 truncate">Sign out{profile?.username ? ` (${profile.username})` : ''}</span>
+      </button>
     </aside>
     <main className="min-w-0 px-4 pb-10 pt-20 sm:px-6 md:ml-[17rem] md:px-8">
       <div className="mx-auto w-full max-w-[1440px]"><Outlet /></div>

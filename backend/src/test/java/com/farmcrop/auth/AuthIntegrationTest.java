@@ -1,6 +1,7 @@
 package com.farmcrop.auth;
 
 import com.farmcrop.auth.AuthTestSupport.Account;
+import com.farmcrop.support.CapturingEmailSender;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,7 @@ import static com.farmcrop.auth.AuthTestSupport.bearer;
 import static com.farmcrop.auth.AuthTestSupport.login;
 import static com.farmcrop.auth.AuthTestSupport.register;
 import static com.farmcrop.auth.AuthTestSupport.registerJson;
+import static com.farmcrop.auth.AuthTestSupport.withUniqueIp;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
@@ -47,24 +49,27 @@ class AuthIntegrationTest {
     // ---------- registration ----------
 
     @Test
-    void registrationCreatesBuyerWithHashedPasswordAndSecureRefreshCookie() throws Exception {
+    void registrationCreatesBuyerWithHashedPasswordAndSecureRefreshCookieOnlyAfterEmailVerification() throws Exception {
         int n = AuthTestSupport.next();
-        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+        String email = "reg" + n + "@example.test";
+        mockMvc.perform(withUniqueIp(post("/api/v1/auth/register")).contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson("Reg" + n, "Reg" + n + "@Example.test", "+91 98765 4" + String.format("%04d", n), PASSWORD, PASSWORD)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
-                .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.data.user.username").value("reg" + n))
-                .andExpect(jsonPath("$.data.user.email").value("reg" + n + "@example.test"))
-                .andExpect(jsonPath("$.data.user.roles").value(org.hamcrest.Matchers.contains("BUYER")))
-                .andExpect(jsonPath("$.data.user.passwordHash").doesNotExist())
-                .andExpect(jsonPath("$.data.refreshToken").doesNotExist())
-                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("fc_refresh=")))
-                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("HttpOnly")))
-                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Secure")))
-                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("SameSite=Strict")))
-                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Path=/api/v1/auth")));
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.verificationRequired").value(true))
+                .andExpect(jsonPath("$.data.email").value(email))
+                .andExpect(jsonPath("$.data.accessToken").doesNotExist())
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE email = ?", Integer.class, email)).isZero();
+
+        MvcResult verified = AuthTestSupport.verifyRegistration(mockMvc, email, CapturingEmailSender.lastCodeFor(email), PASSWORD);
+        assertThat(verified.getResponse().getStatus()).isEqualTo(201);
+        String body = verified.getResponse().getContentAsString();
+        assertThat(com.jayway.jsonpath.JsonPath.<String>read(body, "$.data.user.username")).isEqualTo("reg" + n);
+        assertThat(com.jayway.jsonpath.JsonPath.<java.util.List<String>>read(body, "$.data.user.roles")).containsExactly("BUYER");
+        assertThat(com.jayway.jsonpath.JsonPath.<Boolean>read(body, "$.data.user.emailVerified")).isTrue();
+        assertThat(body).doesNotContain("passwordHash").doesNotContain("refreshToken");
+        String cookie = verified.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+        assertThat(cookie).contains("fc_refresh=", "HttpOnly", "Secure", "SameSite=Strict", "Path=/api/v1/auth");
 
         String hash = jdbc.queryForObject("SELECT password_hash FROM users WHERE username = ?", String.class, "reg" + n);
         assertThat(hash).startsWith("{bcrypt}").doesNotContain(PASSWORD);
@@ -73,43 +78,49 @@ class AuthIntegrationTest {
     @Test
     void registrationCannotGrantItselfSellerOrAdmin() throws Exception {
         int n = AuthTestSupport.next();
+        String email = "sneaky" + n + "@example.test";
         String body = """
-                {"fullName":"Sneaky","username":"sneaky%d","email":"sneaky%d@example.test","phone":"8%09d",
+                {"fullName":"Sneaky","username":"sneaky%d","email":"%s","phone":"8%09d",
                  "password":"%s","confirmPassword":"%s","roles":["ADMIN","SELLER"],"role":"ADMIN","accountStatus":"ACTIVE"}
-                """.formatted(n, n, n, PASSWORD, PASSWORD);
-        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
+                """.formatted(n, email, n, PASSWORD, PASSWORD);
+        mockMvc.perform(withUniqueIp(post("/api/v1/auth/register")).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isAccepted());
+        mockMvc.perform(withUniqueIp(post("/api/v1/auth/register/verify")).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","otp":"%s","password":"%s","roles":["SELLER"],"role":"ADMIN"}
+                                """.formatted(email, CapturingEmailSender.lastCodeFor(email), PASSWORD)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.user.roles").value(org.hamcrest.Matchers.contains("BUYER")));
     }
 
     @Test
-    void registrationRejectsDuplicateUsernameEmailAndPhone() throws Exception {
+    void registrationRejectsADuplicateUsernameWithoutRevealingEmailOrPhone() throws Exception {
         Account existing = register(mockMvc);
-        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(withUniqueIp(post("/api/v1/auth/register")).contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson(existing.username().toUpperCase(), existing.email().toUpperCase(), existing.phone(), PASSWORD, PASSWORD)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ACCOUNT_EXISTS"))
-                .andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("username", "email", "phone")));
+                .andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("username")));
     }
 
     @Test
     void registrationValidatesInputFieldByField() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(withUniqueIp(post("/api/v1/auth/register")).contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson("validname1", "valid1@example.test", "9123456789", PASSWORD, "Different99")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[*].field").value(hasItem("confirmPassword")));
 
-        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(withUniqueIp(post("/api/v1/auth/register")).contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson("validname2", "valid2@example.test", "9123456780", "short", "short")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[*].field").value(hasItem("password")));
 
-        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(withUniqueIp(post("/api/v1/auth/register")).contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson("admin", "valid3@example.test", "9123456781", PASSWORD, PASSWORD)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("username"));
 
-        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(withUniqueIp(post("/api/v1/auth/register")).contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson("validname4", "not-an-email", "12", PASSWORD, PASSWORD)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[*].field").value(hasItem("email")));
